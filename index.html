@@ -245,7 +245,7 @@
 
     <div class="yh-statusbar">
       <span id="statusRoomCode">Đang ở: Phòng Chung Công Cộng</span>
-      <span>AuraChat Client Engine (Auto 10-Day Message Expiry)</span>
+      <span>AuraChat Client Engine (Auto Peer Sync Enabled)</span>
     </div>
   </div>
 
@@ -312,8 +312,6 @@
 
     const receivedMsgIds = new Set();
     const unreadCounts = {};
-
-    // THỜI GIAN HẠN ĐỊNH LƯU TIN NHẮN (10 NGÀY = 864,000,000 MS)
     const TEN_DAYS_MS = 10 * 24 * 60 * 60 * 1000;
 
     const yahooSmileys = [
@@ -554,6 +552,8 @@
           document.getElementById('mqttStatusTag').innerHTML = "🟢 Connected";
           subscribeToAllActiveRooms();
           sendPresencePing();
+          // YÊU CẦU ĐỒNG BỘ LỊCH SỬ TIN NHẮN VỪA BỊ BỎ LỠ KHI OFFLINE
+          requestHistoryFromPeers();
         },
         onFailure: () => {
           isConnecting = false;
@@ -580,6 +580,15 @@
       message.destinationName = topic;
       message.qos = 1;
       mqttClient.send(message);
+    }
+
+    // --- CƠ CHẾ YÊU CẦU / ĐỒNG BỘ LỊCH SỬ TIN NHẮN TỪ PEER KHI VÀO LẠI ONLINE ---
+    function requestHistoryFromPeers() {
+      publishMQTT('control', {
+        type: 'REQ_HISTORY_SYNC',
+        requester: currentUser.nickname,
+        roomId: activeTabId
+      }, activeTabId);
     }
 
     async function handleIncomingMQTTMessage(topic, payloadStr) {
@@ -639,17 +648,14 @@
       } catch(e) {}
     }
 
-    // --- CƠ CHẾ LƯU VÀ TỰ ĐỘNG XÓA TIN CŨ HƠN 10 NGÀY CHO MỌI NGƯỜI ---
     function saveMsgToStorageLog(msgObj) {
       let logsMap = {};
-      try {
-        logsMap = JSON.parse(localStorage.getItem('aurachat_chat_logs_v1') || '{}');
-      } catch(e){}
+      try { logsMap = JSON.parse(localStorage.getItem('aurachat_chat_logs_v1') || '{}'); } catch(e){}
 
       if (!logsMap[msgObj.tabId]) logsMap[msgObj.tabId] = [];
       logsMap[msgObj.tabId].push(msgObj);
 
-      // TỰ ĐỘNG TÌM VÀ XÓA TẤT CẢ TIN NHẮN ĐÃ HƠN 10 NGÀY TUỔI
+      // TỰ ĐỘNG LỌC XÓA TIN NHẮN CỦA TẤT CẢ MỌI NGƯỜI HƠN 10 NGÀY TUỔI
       const now = Date.now();
       for (const tabId of Object.keys(logsMap)) {
         logsMap[tabId] = logsMap[tabId].filter(m => (now - m.timestamp) <= TEN_DAYS_MS);
@@ -660,9 +666,7 @@
 
     function cleanupOldMessages() {
       let logsMap = {};
-      try {
-        logsMap = JSON.parse(localStorage.getItem('aurachat_chat_logs_v1') || '{}');
-      } catch(e){ return; }
+      try { logsMap = JSON.parse(localStorage.getItem('aurachat_chat_logs_v1') || '{}'); } catch(e){ return; }
 
       const now = Date.now();
       let hasChange = false;
@@ -670,9 +674,7 @@
       for (const tabId of Object.keys(logsMap)) {
         const originalLength = logsMap[tabId].length;
         logsMap[tabId] = logsMap[tabId].filter(m => (now - m.timestamp) <= TEN_DAYS_MS);
-        if (logsMap[tabId].length !== originalLength) {
-          hasChange = true;
-        }
+        if (logsMap[tabId].length !== originalLength) { hasChange = true; }
       }
 
       if (hasChange) {
@@ -687,7 +689,7 @@
     }
 
     function renderActiveTabChatLog() {
-      cleanupOldMessages(); // Lọc sạch tin nhắn > 10 ngày trước khi in ra màn hình
+      cleanupOldMessages();
       const box = document.getElementById('msgBox');
       box.innerHTML = '';
       
@@ -743,6 +745,47 @@
     }
 
     async function processControlCommand(cmd) {
+      // 1. Nhận yêu cầu cấp lịch sử từ máy mới vào Online
+      if (cmd.type === 'REQ_HISTORY_SYNC' && cmd.requester !== currentUser.nickname) {
+        let logsMap = {};
+        try { logsMap = JSON.parse(localStorage.getItem('aurachat_chat_logs_v1') || '{}'); } catch(e){}
+        const roomLogs = logsMap[cmd.roomId] || [];
+        
+        if (roomLogs.length > 0) {
+          publishMQTT('control', {
+            type: 'RESP_HISTORY_SYNC',
+            targetRequester: cmd.requester,
+            roomId: cmd.roomId,
+            logs: roomLogs
+          }, cmd.roomId);
+        }
+      }
+
+      // 2. Nhận gói lịch sử từ máy Peer khác gửi cho mình
+      if (cmd.type === 'RESP_HISTORY_SYNC' && cmd.targetRequester === currentUser.nickname) {
+        let logsMap = {};
+        try { logsMap = JSON.parse(localStorage.getItem('aurachat_chat_logs_v1') || '{}'); } catch(e){}
+        
+        const existingLogs = logsMap[cmd.roomId] || [];
+        const existingMsgMap = new Set(existingLogs.map(l => l.sender + '_' + l.timestamp + '_' + l.text));
+
+        let addedCount = 0;
+        cmd.logs.forEach(msg => {
+          const key = msg.sender + '_' + msg.timestamp + '_' + msg.text;
+          if (!existingMsgMap.has(key)) {
+            existingLogs.push(msg);
+            addedCount++;
+          }
+        });
+
+        if (addedCount > 0) {
+          existingLogs.sort((a, b) => a.timestamp - b.timestamp);
+          logsMap[cmd.roomId] = existingLogs;
+          localStorage.setItem('aurachat_chat_logs_v1', JSON.stringify(logsMap));
+          if (cmd.roomId === activeTabId) renderActiveTabChatLog();
+        }
+      }
+
       if (cmd.type === 'ROOM_STATE_SYNC') {
         const dataStr = `${cmd.roomState.roomId}|${cmd.roomState.roomName}|${cmd.roomState.generalMute}|${cmd.roomState.timestamp}`;
         if (cmd.secret) {
@@ -815,6 +858,7 @@
 
       saveRoomSessionsToStorage();
       renderActiveTabChatLog();
+      requestHistoryFromPeers(); // Đồng bộ ngay lịch sử cho tab vừa chuyển sang
     }
 
     document.getElementById('btnCreatePrivate').onclick = async () => {
@@ -1054,7 +1098,7 @@
 
     window.onload = () => {
       renderSmileyPicker();
-      cleanupOldMessages(); // Tự động dọn dẹp các tin nhắn cũ hơn 10 ngày ngay khi mở web
+      cleanupOldMessages();
 
       const savedNick = localStorage.getItem('aurachat_current_nick') || localStorage.getItem('aurachat_last_nick') || 'User_' + Math.random().toString(36).substr(2,4);
       currentUser.nickname = savedNick;
