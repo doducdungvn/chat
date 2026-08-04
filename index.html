@@ -8,6 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- MQTT.js for Cross-Device WebSockets Synchronization -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   
   <style>
     /* --- CSS Variables & Design System --- */
@@ -972,10 +974,18 @@
         <div class="avatar" id="myAvatarDisplay">U</div>
         <div class="user-info">
           <div class="user-name" id="myUsernameDisplay">User</div>
-          <div class="user-status">
-            <span class="status-dot pulse"></span> Đang hoạt động
+          <div class="user-status" id="myConnectionStatus">
+            <span class="status-dot pulse" id="myConnectionDot" style="background-color: var(--status-offline);"></span>
+            <span id="myConnectionText">Ngoại tuyến</span>
           </div>
         </div>
+        <!-- Settings Gear Button -->
+        <button class="btn-logout" id="btnSettings" title="Cấu hình kết nối" style="margin-right: 4px;">
+          <svg style="width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
         <button class="btn-logout" id="btnLogout" title="Đăng xuất">
           <!-- Icon Logout -->
           <svg style="width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2" viewBox="0 0 24 24">
@@ -1079,6 +1089,30 @@
 
   </div>
 
+  <!-- 3. POPUP CÀI ĐẶT KẾT NỐI -->
+  <div class="sidebar-overlay" id="settingsOverlay" style="z-index: 1000;"></div>
+  <div class="welcome-container" id="settingsModal" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.9); z-index: 1001; width: 400px; max-width: 90%;">
+    <h2 style="font-size: 1.5rem; margin-bottom: 16px; font-weight: 600;">Cấu hình kết nối</h2>
+    <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 20px;">Thay đổi địa chỉ MQTT Broker để đồng bộ hóa tin nhắn giữa nhiều thiết bị và trình duyệt.</p>
+    
+    <div class="input-group">
+      <label class="input-label" for="settingBrokerUrl">Địa chỉ MQTT Broker (WebSockets)</label>
+      <input type="text" id="settingBrokerUrl" class="input-field" placeholder="wss://broker.emqx.io:8084/mqtt">
+    </div>
+
+    <div class="input-group" style="display: flex; align-items: center; gap: 8px;">
+      <input type="checkbox" id="settingLocalOnly" style="width: 18px; height: 18px; cursor: pointer;">
+      <label for="settingLocalOnly" style="color: var(--text-main); font-size: 0.9rem; cursor: pointer; user-select: none;">
+        Chỉ chạy cục bộ (Không dùng Internet)
+      </label>
+    </div>
+
+    <div style="display: flex; gap: 12px; margin-top: 24px;">
+      <button class="btn-submit" id="btnSaveSettings" style="padding: 12px;">Lưu & Kết nối</button>
+      <button class="btn-submit" id="btnCancelSettings" style="background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-muted); padding: 12px;">Hủy</button>
+    </div>
+  </div>
+
   <script>
     // --- KHỞI TẠO STATE & CẤU HÌNH ---
     const DB_USERS = 'aurachat_users';
@@ -1098,8 +1132,17 @@
     ];
     let selectedAvatar = avatarGradients[0];
 
-    // Khởi tạo BroadcastChannel để đồng bộ real-time
+    // Khởi tạo BroadcastChannel để đồng bộ local real-time giữa các tab cùng máy
     const bc = new BroadcastChannel('aurachat_channel');
+
+    // --- CẤU HÌNH KẾT NỐI MẠNG (MQTT) ---
+    let mqttClient = null;
+    let isLocalOnly = localStorage.getItem('aurachat_local_only') === 'true';
+    let mqttBrokerUrl = localStorage.getItem('aurachat_broker_url') || 'wss://broker.emqx.io:8084/mqtt';
+    const MQTT_TOPIC_PREFIX = 'aurachat_v1_';
+    
+    // Lưu thông tin người dùng online nhận diện qua mạng MQTT (nick -> { avatar, lastActive })
+    let networkOnlineUsers = new Map();
 
     // --- ELEMENT SELECTOR ---
     const welcomeScreen = document.getElementById('welcomeScreen');
@@ -1135,6 +1178,15 @@
     const appSidebar = document.getElementById('appSidebar');
     const sidebarOverlay = document.getElementById('sidebarOverlay');
 
+    // Cấu hình Settings Panel
+    const btnSettings = document.getElementById('btnSettings');
+    const settingsModal = document.getElementById('settingsModal');
+    const settingsOverlay = document.getElementById('settingsOverlay');
+    const settingBrokerUrl = document.getElementById('settingBrokerUrl');
+    const settingLocalOnly = document.getElementById('settingLocalOnly');
+    const btnSaveSettings = document.getElementById('btnSaveSettings');
+    const btnCancelSettings = document.getElementById('btnCancelSettings');
+
     // --- CHỨC NĂNG RENDER AVATAR CHO ĐĂNG NHẬP ---
     function renderAvatarChoices() {
       avatarGrid.innerHTML = '';
@@ -1160,23 +1212,49 @@
       });
     });
 
-    // --- LOGIC XỬ LÝ HEARTBEAT & TRẠNG THÁI ONLINE ---
+    // --- LOGIC XỬ LÝ TRẠNG THÁI ONLINE & HEARTBEAT ---
     // Kiểm tra danh sách phiên (tabs) online hiện tại
     function getOnlineNicks() {
       const sessions = JSON.parse(localStorage.getItem(DB_SESSIONS) || '{}');
       const now = Date.now();
       const onlineSet = new Set();
       
+      // 1. Quét session local (từ các tab khác trên cùng trình duyệt)
       for (const [sid, data] of Object.entries(sessions)) {
-        if (now - data.lastActive < 6000) { // Timeout 6 giây để coi là offline
+        if (now - data.lastActive < 6000) { // Timeout 6 giây
           onlineSet.add(data.nickname);
         } else {
-          // Xóa session đã hết hạn
           delete sessions[sid];
         }
       }
       localStorage.setItem(DB_SESSIONS, JSON.stringify(sessions));
+
+      // 2. Quét danh sách online từ mạng MQTT (nếu không chạy Local Only)
+      if (!isLocalOnly) {
+        for (const [nick, data] of networkOnlineUsers.entries()) {
+          if (now - data.lastActive < 8000) { // Timeout 8 giây cho mạng
+            onlineSet.add(nick);
+          } else {
+            networkOnlineUsers.delete(nick);
+          }
+        }
+      }
+
       return onlineSet;
+    }
+
+    // Đăng ký thông tin User nhìn thấy vào danh bạ localStorage
+    function registerSeenUser(nick, avatar) {
+      const users = JSON.parse(localStorage.getItem(DB_USERS) || '{}');
+      if (!users[nick] || users[nick].avatar !== avatar) {
+        users[nick] = {
+          nickname: nick,
+          avatar: avatar,
+          firstActive: users[nick] ? users[nick].firstActive : Date.now(),
+          lastSeen: Date.now()
+        };
+        localStorage.setItem(DB_USERS, JSON.stringify(users));
+      }
     }
 
     // Ping sự hiện diện của Tab này
@@ -1193,19 +1271,23 @@
       localStorage.setItem(DB_SESSIONS, JSON.stringify(sessions));
 
       // Cập nhật thời gian nhìn thấy cuối cùng của user trong bảng Users
+      registerSeenUser(currentUser.nickname, currentUser.avatar);
       const users = JSON.parse(localStorage.getItem(DB_USERS) || '{}');
       if (users[currentUser.nickname]) {
         users[currentUser.nickname].lastSeen = Date.now();
         localStorage.setItem(DB_USERS, JSON.stringify(users));
       }
 
-      // Phát sóng ping qua BroadcastChannel
+      // Phát sóng ping qua BroadcastChannel nội bộ
       bc.postMessage({
         type: 'presence_ping',
         sessionId: sessionTabId,
         nickname: currentUser.nickname,
         avatar: currentUser.avatar
       });
+
+      // Phát sóng ping qua mạng MQTT (nếu online)
+      publishPresence('ping');
     }
 
     // Khởi chạy Heartbeat (mỗi 2 giây)
@@ -1217,7 +1299,259 @@
       }
     }, 2000);
 
-    // --- LOGIC ĐĂNG NHẬP / DÒNG HOẠT ĐỘNG ---
+    // --- LOGIC KẾT NỐI MẠNG MQTT ---
+    function initMQTT() {
+      // Đóng kết nối cũ nếu đang có
+      if (mqttClient) {
+        try { mqttClient.end(); } catch(e){}
+        mqttClient = null;
+      }
+
+      if (isLocalOnly) {
+        updateNetworkStatusIndicator('local');
+        return;
+      }
+
+      if (typeof mqtt === 'undefined') {
+        console.warn("Thư viện MQTT.js chưa được tải. Chuyển sang chế độ Cục bộ.");
+        updateNetworkStatusIndicator('error');
+        return;
+      }
+
+      updateNetworkStatusIndicator('connecting');
+
+      const clientId = 'aura_' + currentUser.nickname + '_' + Math.random().toString(36).substr(2, 5);
+
+      try {
+        mqttClient = mqtt.connect(mqttBrokerUrl, {
+          clientId: clientId,
+          keepalive: 60,
+          clean: true,
+          connectTimeout: 5000,
+          reconnectPeriod: 3000
+        });
+
+        mqttClient.on('connect', () => {
+          updateNetworkStatusIndicator('online');
+
+          // Đăng ký lắng nghe các topic:
+          // 1. Tin nhắn chung
+          mqttClient.subscribe(`${MQTT_TOPIC_PREFIX}general/messages`);
+          // 2. Tin nhắn riêng gửi cho mình
+          mqttClient.subscribe(`${MQTT_TOPIC_PREFIX}dm/${currentUser.nickname}/messages`);
+          // 3. Heartbeat của người khác
+          mqttClient.subscribe(`${MQTT_TOPIC_PREFIX}presence/ping`);
+          // 4. Yêu cầu đồng bộ phòng chung
+          mqttClient.subscribe(`${MQTT_TOPIC_PREFIX}sync/req`);
+          mqttClient.subscribe(`${MQTT_TOPIC_PREFIX}sync/res/${currentUser.nickname}`);
+          // 5. Yêu cầu gửi lại tin nhắn riêng tư đã lỡ khi offline
+          mqttClient.subscribe(`${MQTT_TOPIC_PREFIX}sync/dms/req`);
+
+          // Gửi tín hiệu báo tôi vừa Online
+          publishPresence('join');
+
+          // Gửi yêu cầu xin lịch sử chat Phòng Chung từ người online trước đó
+          mqttClient.publish(`${MQTT_TOPIC_PREFIX}sync/req`, JSON.stringify({
+            requestor: currentUser.nickname
+          }));
+
+          // Gửi yêu cầu xin tin nhắn riêng gửi cho mình lúc offline
+          mqttClient.publish(`${MQTT_TOPIC_PREFIX}sync/dms/req`, JSON.stringify({
+            nickname: currentUser.nickname
+          }));
+        });
+
+        mqttClient.on('message', (topic, payload) => {
+          try {
+            const data = JSON.parse(payload.toString());
+            handleIncomingMQTTMessage(topic, data);
+          } catch (err) {
+            console.error("Lỗi parse dữ liệu MQTT:", err);
+          }
+        });
+
+        mqttClient.on('error', (err) => {
+          console.error("Lỗi kết nối MQTT:", err);
+          updateNetworkStatusIndicator('error');
+        });
+
+        mqttClient.on('close', () => {
+          if (!isLocalOnly) {
+            updateNetworkStatusIndicator('connecting');
+          }
+        });
+      } catch (err) {
+        console.error("Không thể khởi động kết nối MQTT:", err);
+        updateNetworkStatusIndicator('error');
+      }
+    }
+
+    function publishPresence(action = 'ping') {
+      if (!mqttClient || !mqttClient.connected || isLocalOnly) return;
+      mqttClient.publish(`${MQTT_TOPIC_PREFIX}presence/ping`, JSON.stringify({
+        nickname: currentUser.nickname,
+        avatar: currentUser.avatar,
+        sessionId: sessionTabId,
+        action: action
+      }));
+    }
+
+    function updateNetworkStatusIndicator(status) {
+      const connDot = document.getElementById('myConnectionDot');
+      const connText = document.getElementById('myConnectionText');
+      if (!connDot || !connText) return;
+
+      connDot.className = 'status-dot';
+      
+      switch (status) {
+        case 'online':
+          connDot.className = 'status-dot pulse';
+          connDot.style.backgroundColor = 'var(--status-online)';
+          connText.innerText = 'Trực tuyến (Mạng)';
+          break;
+        case 'connecting':
+          connDot.className = 'status-dot pulse';
+          connDot.style.backgroundColor = '#f59e0b';
+          connText.innerText = 'Đang kết nối mạng...';
+          break;
+        case 'local':
+          connDot.style.backgroundColor = 'var(--status-offline)';
+          connText.innerText = 'Ngoại tuyến (Cục bộ)';
+          break;
+        case 'error':
+        default:
+          connDot.style.backgroundColor = '#ef4444';
+          connText.innerText = 'Mất kết nối / Lỗi';
+          break;
+      }
+    }
+
+    function handleIncomingMQTTMessage(topic, data) {
+      if (!currentUser) return;
+
+      // 1. Nhận tin nhắn Phòng chung
+      if (topic === `${MQTT_TOPIC_PREFIX}general/messages`) {
+        if (data.sender !== currentUser.nickname) {
+          saveMessage(data);
+          appendMessage(data);
+          updateSidebarLastMsg('general', data);
+        }
+      }
+      // 2. Nhận tin nhắn riêng tư gửi cho mình
+      else if (topic === `${MQTT_TOPIC_PREFIX}dm/${currentUser.nickname}/messages`) {
+        if (data.sender !== currentUser.nickname) {
+          saveMessage(data);
+          appendMessage(data);
+          updateSidebarLastMsg(data.sender, data);
+        }
+      }
+      // 3. Nhận tín hiệu Online/Offline từ mạng
+      else if (topic === `${MQTT_TOPIC_PREFIX}presence/ping`) {
+        if (data.nickname !== currentUser.nickname) {
+          if (data.action === 'leave') {
+            networkOnlineUsers.delete(data.nickname);
+            appendSystemMessage(`${data.nickname} đã rời phòng chat (Mạng).`);
+          } else {
+            const isNewOnline = !networkOnlineUsers.has(data.nickname);
+            networkOnlineUsers.set(data.nickname, {
+              avatar: data.avatar,
+              lastActive: Date.now()
+            });
+            registerSeenUser(data.nickname, data.avatar);
+            
+            if (data.action === 'join' && isNewOnline) {
+              appendSystemMessage(`${data.nickname} đã tham gia phòng chat (Mạng).`);
+            }
+          }
+          updateSidebarUsers();
+          updateChatHeaderStatus();
+        }
+      }
+      // 4. Có người yêu cầu đồng bộ lịch sử phòng chung
+      else if (topic === `${MQTT_TOPIC_PREFIX}sync/req`) {
+        if (data.requestor !== currentUser.nickname) {
+          // Trì hoãn ngẫu nhiên để tránh nghẽn băng thông
+          setTimeout(() => {
+            const msgs = getMessages().filter(m => m.receiver === 'general');
+            if (msgs.length > 0 && mqttClient && mqttClient.connected) {
+              mqttClient.publish(`${MQTT_TOPIC_PREFIX}sync/res/${data.requestor}`, JSON.stringify(msgs));
+            }
+          }, Math.random() * 1500);
+        }
+      }
+      // 5. Nhận dữ liệu lịch sử phòng chung được đồng bộ về
+      else if (topic === `${MQTT_TOPIC_PREFIX}sync/res/${currentUser.nickname}`) {
+        mergeHistory(data);
+      }
+      // 6. Có người online yêu cầu nhận tin nhắn riêng tư đã bỏ lỡ
+      else if (topic === `${MQTT_TOPIC_PREFIX}sync/dms/req`) {
+        const targetNick = data.nickname;
+        if (targetNick !== currentUser.nickname) {
+          // Tìm trong tin nhắn của mình xem có tin nhắn nào gửi cho targetNick không
+          const msgs = getMessages().filter(m => m.sender === currentUser.nickname && m.receiver === targetNick);
+          if (msgs.length > 0 && mqttClient && mqttClient.connected) {
+            msgs.forEach(msg => {
+              mqttClient.publish(`${MQTT_TOPIC_PREFIX}dm/${targetNick}/messages`, JSON.stringify(msg));
+            });
+          }
+        }
+      }
+    }
+
+    // Trộn lịch sử từ thiết bị khác về LocalStorage, lọc trùng bằng ID tin nhắn
+    function mergeHistory(newMsgs) {
+      if (!Array.isArray(newMsgs)) return;
+      const localMsgs = getMessages();
+      const msgMap = new Map(localMsgs.map(m => [m.id, m]));
+      
+      newMsgs.forEach(m => {
+        msgMap.set(m.id, m);
+      });
+      
+      const merged = Array.from(msgMap.values());
+      merged.sort((a, b) => a.timestamp - b.timestamp);
+      
+      localStorage.setItem(DB_MESSAGES, JSON.stringify(merged));
+      
+      // Vẽ lại tin nhắn nếu đang ở Room hiện tại
+      if (currentUser) {
+        switchChatTarget(activeChat);
+      }
+    }
+
+    // --- POPUP CÀI ĐẶT ---
+    btnSettings.addEventListener('click', () => {
+      settingBrokerUrl.value = mqttBrokerUrl;
+      settingLocalOnly.checked = isLocalOnly;
+      settingsModal.classList.add('open');
+      settingsModal.style.display = 'block';
+      settingsOverlay.style.display = 'block';
+    });
+
+    function closeSettings() {
+      settingsModal.classList.remove('open');
+      settingsModal.style.display = 'none';
+      settingsOverlay.style.display = 'none';
+    }
+
+    btnCancelSettings.addEventListener('click', closeSettings);
+    settingsOverlay.addEventListener('click', closeSettings);
+
+    btnSaveSettings.addEventListener('click', () => {
+      mqttBrokerUrl = settingBrokerUrl.value.trim() || 'wss://broker.emqx.io:8084/mqtt';
+      isLocalOnly = settingLocalOnly.checked;
+      
+      localStorage.setItem('aurachat_broker_url', mqttBrokerUrl);
+      localStorage.setItem('aurachat_local_only', isLocalOnly ? 'true' : 'false');
+      
+      closeSettings();
+
+      if (currentUser) {
+        initMQTT();
+      }
+    });
+
+    // --- LOGIC ĐĂNG NHẬP / THAM GIA ---
     btnJoin.addEventListener('click', joinChatroom);
     nickInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') joinChatroom();
@@ -1241,17 +1575,15 @@
         return;
       }
 
-      // Kiểm tra tên đã có người đang online sử dụng chưa
+      // Kiểm tra biệt danh đã có ai online sử dụng chưa
       const onlineNicks = getOnlineNicks();
       if (onlineNicks.has(nick)) {
         showLoginError('Biệt danh này hiện đang online ở thiết bị/tab khác!');
         return;
       }
 
-      // Ẩn lỗi
       loginError.style.display = 'none';
 
-      // Tạo/Cập nhật thông tin User trong DB
       const users = JSON.parse(localStorage.getItem(DB_USERS) || '{}');
       
       currentUser = {
@@ -1264,19 +1596,21 @@
       users[nick] = currentUser;
       localStorage.setItem(DB_USERS, JSON.stringify(users));
 
-      // Đăng ký session
+      // Đăng ký nhịp tim local
       sendPresencePing();
 
-      // Chuyển đổi giao diện
+      // Kết nối MQTT
+      initMQTT();
+
+      // Chuyển giao diện
       welcomeScreen.style.display = 'none';
       chatApp.style.display = 'grid';
 
-      // Hiển thị profile cá nhân
       myAvatarDisplay.className = `avatar ${currentUser.avatar}`;
       myAvatarDisplay.innerText = currentUser.nickname.charAt(0).toUpperCase();
       myUsernameDisplay.innerText = currentUser.nickname;
 
-      // Broadcast sự kiện tham gia phòng chat
+      // Broadcast báo tab khác cùng máy
       bc.postMessage({
         type: 'sys_join',
         nickname: currentUser.nickname,
@@ -1284,43 +1618,48 @@
         timestamp: Date.now()
       });
 
-      // Ghi nhận log hệ thống cục bộ
-      appendSystemMessage(`${currentUser.nickname} đã tham gia phòng chat.`);
+      appendSystemMessage(`${currentUser.nickname} đã đăng nhập phòng chat.`);
       
-      // Load tin nhắn ban đầu
       activeChat = 'general';
       switchChatTarget('general');
-
-      // Tải lại sidebar
       updateSidebarUsers();
     }
 
-    // --- LOGOUT ---
+    // --- ĐĂNG XUẤT ---
     btnLogout.addEventListener('click', () => {
       if (!currentUser) return;
 
-      // Xóa session tab hiện tại
+      // Hủy session local
       const sessions = JSON.parse(localStorage.getItem(DB_SESSIONS) || '{}');
       delete sessions[sessionTabId];
       localStorage.setItem(DB_SESSIONS, JSON.stringify(sessions));
 
-      // Broadcast sự kiện rời phòng
+      // Hủy kết nối MQTT & Broadcast thông điệp rời đi
+      if (mqttClient) {
+        try {
+          publishPresence('leave');
+          mqttClient.end();
+        } catch(e){}
+        mqttClient = null;
+      }
+
       bc.postMessage({
         type: 'sys_leave',
         nickname: currentUser.nickname,
         timestamp: Date.now()
       });
 
-      appendSystemMessage(`Bạn đã rời phòng chat.`);
+      appendSystemMessage(`Bạn đã đăng xuất.`);
 
-      // Reset state
       currentUser = null;
       chatApp.style.display = 'none';
       welcomeScreen.style.display = 'block';
       nickInput.value = '';
+      
+      updateNetworkStatusIndicator('local');
     });
 
-    // --- QUẢN LÝ TIN NHẮN (GỬI / NHẬN / LƯU TRỮ) ---
+    // --- QUẢN LÝ TIN NHẮN (GỬI / NHẬN) ---
     function getMessages() {
       return JSON.parse(localStorage.getItem(DB_MESSAGES) || '[]');
     }
@@ -1328,14 +1667,12 @@
     function saveMessage(msg) {
       const msgs = getMessages();
       msgs.push(msg);
-      // Giới hạn lịch sử tin nhắn tối đa 500 tin để tránh quá tải LocalStorage
       if (msgs.length > 500) {
         msgs.shift();
       }
       localStorage.setItem(DB_MESSAGES, JSON.stringify(msgs));
     }
 
-    // Hàm gửi tin nhắn
     function sendMessage() {
       const text = messageInput.value.trim();
       if (!text || !currentUser) return;
@@ -1344,28 +1681,33 @@
         id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
         sender: currentUser.nickname,
         senderAvatar: currentUser.avatar,
-        receiver: activeChat, // 'general' hoặc nick người nhận (DM)
+        receiver: activeChat,
         text: text,
         timestamp: Date.now()
       };
 
-      // 1. Lưu tin nhắn vào LocalStorage
+      // 1. Lưu cục bộ
       saveMessage(msg);
 
-      // 2. Broadcast tin nhắn tới các tab đang hoạt động qua BroadcastChannel
-      bc.postMessage({
-        type: 'new_msg',
-        message: msg
-      });
+      // 2. Phát sóng qua MQTT nếu online hoặc BroadcastChannel nếu cục bộ
+      if (!isLocalOnly && mqttClient && mqttClient.connected) {
+        if (activeChat === 'general') {
+          mqttClient.publish(`${MQTT_TOPIC_PREFIX}general/messages`, JSON.stringify(msg));
+        } else {
+          mqttClient.publish(`${MQTT_TOPIC_PREFIX}dm/${activeChat}/messages`, JSON.stringify(msg));
+        }
+      } else {
+        bc.postMessage({
+          type: 'new_msg',
+          message: msg
+        });
+      }
 
-      // 3. Hiển thị ngay lập tức lên màn hình tab hiện tại
+      // 3. Vẽ lên màn hình cá nhân
       appendMessage(msg);
 
-      // Reset input
       messageInput.value = '';
       messageInput.focus();
-
-      // Cập nhật tin nhắn cuối cùng trên sidebar
       updateSidebarLastMsg(activeChat, msg);
     }
 
@@ -1374,39 +1716,32 @@
       if (e.key === 'Enter') sendMessage();
     });
 
-    // Append tin nhắn vào khung chat DOM
     function appendMessage(msg) {
-      // Kiểm tra xem tin nhắn có thuộc về cuộc hội thoại đang active không
       const isGeneralActive = activeChat === 'general' && msg.receiver === 'general';
       const isPrivateActive = activeChat !== 'general' && 
                              ((msg.sender === currentUser.nickname && msg.receiver === activeChat) || 
                               (msg.sender === activeChat && msg.receiver === currentUser.nickname));
 
       if (!isGeneralActive && !isPrivateActive) {
-        // Nhận tin nhắn từ cuộc trò chuyện khác -> Cập nhật Badge chưa đọc
         if (msg.receiver !== 'general') {
           updateUnreadBadge(msg.sender, 1);
         }
         return; 
       }
 
-      // Tạo DOM Message Group
       const isMe = msg.sender === currentUser.nickname;
       const group = document.createElement('div');
       group.className = `msg-group ${isMe ? 'me' : 'other'}`;
 
-      // Avatar
       const av = document.createElement('div');
       av.className = `avatar ${msg.senderAvatar}`;
       av.innerText = msg.sender.charAt(0).toUpperCase();
       av.title = msg.sender;
       group.appendChild(av);
 
-      // Wrapper nội dung bong bóng
       const wrapper = document.createElement('div');
       wrapper.className = 'msg-bubble-wrapper';
 
-      // Tên người gửi (nếu là phòng chung và là người khác)
       if (!isMe && activeChat === 'general') {
         const name = document.createElement('span');
         name.className = 'msg-sender-name';
@@ -1414,13 +1749,11 @@
         wrapper.appendChild(name);
       }
 
-      // Bong bóng tin nhắn
       const bubble = document.createElement('div');
       bubble.className = 'msg-bubble';
       bubble.innerText = msg.text;
       wrapper.appendChild(bubble);
 
-      // Thời gian gửi
       const time = document.createElement('span');
       time.className = 'msg-time';
       const date = new Date(msg.timestamp);
@@ -1429,12 +1762,9 @@
 
       group.appendChild(wrapper);
       messagesContainer.appendChild(group);
-
-      // Tự động cuộn xuống cuối
       messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
 
-    // Thêm thông báo hệ thống
     function appendSystemMessage(text) {
       const sysDiv = document.createElement('div');
       sysDiv.className = 'system-message';
@@ -1443,14 +1773,12 @@
       messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
 
-    // --- QUẢN LÝ CUỘC TRÒ CHUYỆN (SWITCH CHAT TARGET) ---
+    // --- CHUYỂN HOẠT ĐỘNG CHAT ---
     function switchChatTarget(target) {
       activeChat = target;
       
-      // Xóa class active cũ ở Sidebar
       document.querySelectorAll('.list-item').forEach(item => item.classList.remove('active'));
 
-      // Đánh dấu active mới
       if (target === 'general') {
         roomGeneral.classList.add('active');
         chatTargetAvatar.className = 'avatar av-g9';
@@ -1462,7 +1790,6 @@
           targetItem.classList.add('active');
         }
         
-        // Lấy thông tin user target từ DB
         const users = JSON.parse(localStorage.getItem(DB_USERS) || '{}');
         const uInfo = users[target] || { avatar: 'av-g8', nickname: target };
         
@@ -1471,43 +1798,28 @@
         chatTargetName.innerText = target;
       }
 
-      // Reset Badge chưa đọc cho target này
       clearUnreadBadge(target);
-
-      // Xóa khung tin nhắn cũ
       messagesContainer.innerHTML = '';
 
-      // Tải và hiển thị lịch sử tin nhắn của target
       const msgs = getMessages();
       msgs.forEach(msg => {
         appendMessage(msg);
       });
 
-      // Cập nhật header trạng thái online/offline
       updateChatHeaderStatus();
       
-      // Trên mobile thì đóng sidebar lại khi chọn xong chat
       appSidebar.classList.remove('mobile-open');
       sidebarOverlay.style.display = 'none';
-
-      // Focus ô nhập
       messageInput.focus();
     }
 
-    // Lắng nghe click chuyển Room
-    roomGeneral.addEventListener('click', () => {
-      switchChatTarget('general');
-    });
-
-    // --- CẬP NHẬT TRẠNG THÁI ONLINE & SIDEBAR ---
     function updateChatHeaderStatus() {
       if (activeChat === 'general') {
         const onlineNicks = getOnlineNicks();
         chatTargetStatusDot.className = 'status-dot';
         chatTargetStatusDot.style.backgroundColor = 'var(--status-online)';
-        chatTargetStatusText.innerText = `${onlineNicks.size} người đang trực tuyến`;
+        chatTargetStatusText.innerText = `${onlineNicks.size} người trực tuyến`;
       } else {
-        // Chat riêng tư (DM)
         const onlineNicks = getOnlineNicks();
         const isOnline = onlineNicks.has(activeChat);
 
@@ -1518,12 +1830,10 @@
         } else {
           chatTargetStatusDot.style.backgroundColor = 'var(--status-offline)';
           
-          // Lấy mốc hoạt động cuối của người này
           const users = JSON.parse(localStorage.getItem(DB_USERS) || '{}');
           const lastActive = users[activeChat]?.lastSeen;
           if (lastActive) {
-            const timeAgo = formatTimeAgo(lastActive);
-            chatTargetStatusText.innerText = `Ngoại tuyến (Hoạt động ${timeAgo})`;
+            chatTargetStatusText.innerText = `Ngoại tuyến (Hoạt động ${formatTimeAgo(lastActive)})`;
           } else {
             chatTargetStatusText.innerText = 'Ngoại tuyến';
           }
@@ -1542,17 +1852,15 @@
       return `${days} ngày trước`;
     }
 
-    // Render & Cập nhật danh sách người dùng trong Sidebar (DMs)
+    // Vẽ danh sách sidebar
     function updateSidebarUsers() {
       if (!currentUser) return;
 
       const users = JSON.parse(localStorage.getItem(DB_USERS) || '{}');
       const onlineNicks = getOnlineNicks();
       
-      // Lấy toàn bộ user khác ngoại trừ bản thân
       const otherUsers = Object.keys(users).filter(nick => nick !== currentUser.nickname);
 
-      // Sắp xếp: online trước, offline sau, sau đó xếp theo bảng chữ cái
       otherUsers.sort((a, b) => {
         const aOnline = onlineNicks.has(a) ? 1 : 0;
         const bOnline = onlineNicks.has(b) ? 1 : 0;
@@ -1560,11 +1868,7 @@
         return a.localeCompare(b);
       });
 
-      // Giữ lại các phần tử DOM đã có để tránh giật lag hoặc tự cuộn
-      // Tạo HTML list
       const currentActiveTarget = activeChat;
-      
-      // Xóa danh sách cũ
       dmList.innerHTML = '';
 
       if (otherUsers.length === 0) {
@@ -1586,18 +1890,15 @@
         item.className = `list-item ${currentActiveTarget === nick ? 'active' : ''}`;
         item.setAttribute('data-chat-target', nick);
         
-        // Avatar
         const av = document.createElement('div');
         av.className = `avatar ${u.avatar}`;
         av.innerText = nick.charAt(0).toUpperCase();
         item.appendChild(av);
 
-        // Indicator Trực tuyến / Ngoại tuyến
         const ind = document.createElement('div');
         ind.className = `presence-indicator ${isOnline ? 'online' : 'offline'}`;
         item.appendChild(ind);
 
-        // Content
         const content = document.createElement('div');
         content.className = 'list-item-content';
         
@@ -1608,7 +1909,6 @@
         titleSpan.innerText = nick;
         titleLine.appendChild(titleSpan);
 
-        // Badge chưa đọc (Unread Count)
         const unreadCount = getUnreadCount(nick);
         if (unreadCount > 0) {
           const badge = document.createElement('span');
@@ -1620,7 +1920,6 @@
 
         content.appendChild(titleLine);
 
-        // Tin nhắn cuối cùng giữa tôi và user này
         const lastMsg = getLastMsgBetween(currentUser.nickname, nick);
         const sub = document.createElement('div');
         sub.className = 'item-subtitle';
@@ -1629,7 +1928,6 @@
 
         item.appendChild(content);
 
-        // Đăng ký sự kiện click chuyển chat
         item.addEventListener('click', () => {
           switchChatTarget(nick);
         });
@@ -1638,7 +1936,7 @@
       });
     }
 
-    // --- QUẢN LÝ TIN NHẮN CHƯA ĐỌC (UNREAD BADGES) ---
+    // --- QUẢN LÝ TIN NHẮN CHƯA ĐỌC ---
     function getUnreadCount(senderNick) {
       if (!currentUser) return 0;
       const lastReadMap = JSON.parse(localStorage.getItem(DB_LAST_READ) || '{}');
@@ -1646,7 +1944,6 @@
       const lastReadTime = myLastRead[senderNick] || 0;
 
       const msgs = getMessages();
-      // Đếm tin nhắn gửi từ senderNick tới tôi mà có timestamp lớn hơn thời gian đọc cuối
       const unread = msgs.filter(msg => 
         msg.sender === senderNick && 
         msg.receiver === currentUser.nickname && 
@@ -1656,7 +1953,6 @@
     }
 
     function updateUnreadBadge(senderNick, count) {
-      // Cập nhật UI sidebar ngay lập tức
       updateSidebarUsers();
     }
 
@@ -1669,14 +1965,12 @@
       lastReadMap[currentUser.nickname][targetNick] = Date.now();
       localStorage.setItem(DB_LAST_READ, JSON.stringify(lastReadMap));
 
-      // Render lại danh sách để ẩn badge
       const badge = document.getElementById(`badge-${targetNick}`);
       if (badge) {
         badge.style.display = 'none';
       }
     }
 
-    // Tìm tin nhắn cuối cùng để hiển thị preview trên sidebar
     function getLastMsgBetween(me, other) {
       const msgs = getMessages();
       for (let i = msgs.length - 1; i >= 0; i--) {
@@ -1696,25 +1990,22 @@
         const preview = `${msg.sender}: ${msg.text}`;
         document.getElementById('generalLastMsg').innerText = preview.substring(0, 30) + (preview.length > 30 ? '...' : '');
       } else {
-        updateSidebarUsers(); // Với DMs, cập nhật lại toàn bộ sidebar để tối ưu vị trí sắp xếp
+        updateSidebarUsers();
       }
     }
 
-    // --- LẮNG NGHE KÊNH TRUYỀN THÔNG (BROADCASTCHANNEL RECEIVER) ---
+    // --- ĐỒNG BỘ NỘI BỘ (BROADCASTCHANNEL) ---
     bc.onmessage = function (e) {
       const data = e.data;
       if (!data || !currentUser) return;
 
       switch (data.type) {
         case 'new_msg':
-          // Nhận tin nhắn mới từ tab khác
           appendMessage(data.message);
-          // Cập nhật thông tin preview tin nhắn cuối ở sidebar
           updateSidebarLastMsg(data.message.receiver === 'general' ? 'general' : data.message.sender, data.message);
           break;
 
         case 'sys_join':
-          // Ai đó tham gia phòng chat
           if (activeChat === 'general') {
             appendSystemMessage(`${data.nickname} đã tham gia phòng chat.`);
           }
@@ -1723,27 +2014,21 @@
           break;
 
         case 'sys_leave':
-          // Ai đó rời phòng
           if (activeChat === 'general') {
             appendSystemMessage(`${data.nickname} đã rời phòng.`);
           }
-          // Xóa ngay lập tức session trong LocalStorage
           const sessions = JSON.parse(localStorage.getItem(DB_SESSIONS) || '{}');
-          // Quét và xóa các session thuộc về nickname này
           for (const [sid, item] of Object.entries(sessions)) {
             if (item.nickname === data.nickname) {
               delete sessions[sid];
             }
           }
           localStorage.setItem(DB_SESSIONS, JSON.stringify(sessions));
-          
           updateSidebarUsers();
           updateChatHeaderStatus();
           break;
 
         case 'presence_ping':
-          // Nhận tín hiệu heartbeat từ tab khác
-          // Cập nhật session vào local memory
           const s = JSON.parse(localStorage.getItem(DB_SESSIONS) || '{}');
           s[data.sessionId] = {
             nickname: data.nickname,
@@ -1755,19 +2040,14 @@
       }
     };
 
-    // Lắng nghe sự kiện storage thay đổi từ tab khác (Dành cho việc đồng bộ thủ công phòng khi Broadcast bị ngắt)
     window.addEventListener('storage', (e) => {
       if (e.key === DB_MESSAGES && currentUser) {
-        // Tin nhắn trong LocalStorage đã thay đổi -> re-sync tin nhắn
         const msgs = getMessages();
         if (msgs.length > 0) {
           const lastMsg = msgs[msgs.length - 1];
-          // Nếu tin nhắn cuối này không phải do chính tab này gửi (được check bằng logic appendMessage)
           if (lastMsg.sender !== currentUser.nickname) {
-            // Xem tin nhắn cuối cùng trong container hiện tại
             const shownMsgs = messagesContainer.querySelectorAll('.msg-bubble');
             const lastShownText = shownMsgs.length > 0 ? shownMsgs[shownMsgs.length - 1].innerText : '';
-            
             if (lastShownText !== lastMsg.text) {
               appendMessage(lastMsg);
               updateSidebarLastMsg(lastMsg.receiver === 'general' ? 'general' : lastMsg.sender, lastMsg);
@@ -1777,7 +2057,7 @@
       }
     });
 
-    // --- EMOJI PICKER DIALOG ---
+    // --- EMOJI PICKER ---
     emojiTrigger.addEventListener('click', (e) => {
       e.stopPropagation();
       const isVisible = emojiPicker.style.display === 'grid';
@@ -1789,7 +2069,7 @@
     });
 
     emojiPicker.addEventListener('click', (e) => {
-      e.stopPropagation(); // Ngăn đóng picker khi click vào trong nó
+      e.stopPropagation();
     });
 
     document.querySelectorAll('.emoji-item').forEach(item => {
@@ -1820,9 +2100,8 @@
     }
 
     // --- KHỞI CHẠY LẦN ĐẦU ---
-    // Kiểm tra xem trình duyệt có hỗ trợ BroadcastChannel và LocalStorage hay không
     if (!window.BroadcastChannel || !window.localStorage) {
-      alert("Trình duyệt của bạn quá cũ và không hỗ trợ các tính năng thời gian thực của ứng dụng này!");
+      alert("Trình duyệt của bạn quá cũ và không hỗ trợ các tính năng của ứng dụng này!");
     }
   </script>
 </body>
