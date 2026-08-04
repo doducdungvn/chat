@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>AuraChat</title>
+  <title>AuraChat </title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
   <style>
     :root {
@@ -23,7 +23,6 @@
       height: 100vh; width: 100vw; display: flex; justify-content: center; align-items: center; overflow: hidden;
     }
 
-    /* ANIMATION RUNG MÀN HÌNH BUZZ CHUẨN YAHOO */
     @keyframes yahooBuzzShake {
       0% { transform: translate(0, 0) rotate(0deg); }
       10% { transform: translate(-8px, -5px) rotate(-1deg); }
@@ -38,9 +37,7 @@
       100% { transform: translate(0, 0) rotate(0deg); }
     }
 
-    .buzz-shaking {
-      animation: yahooBuzzShake 0.4s ease-in-out infinite !important;
-    }
+    .buzz-shaking { animation: yahooBuzzShake 0.4s ease-in-out infinite !important; }
 
     .yh-window {
       width: 96vw; height: 92vh; max-width: 1600px; max-height: 1000px;
@@ -97,10 +94,6 @@
     .msg-sender.me { color: #ff0000; }
     .msg-sys { color: #808080; font-style: italic; font-size: 11px; }
 
-    .yahoo-smiley {
-      height: 19px; width: auto; vertical-align: middle; margin: 0 2px; display: inline-block;
-    }
-
     .yh-toolbar {
       padding: 4px 6px; background: #f0f0f0; border-top: 1px solid #d4d0c8; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; position: relative;
     }
@@ -111,28 +104,22 @@
 
     .smiley-picker-popup {
       display: none; position: absolute; bottom: 32px; left: 6px; background: #ece9d8; border: 2px solid #7f9db9;
-      padding: 6px; border-radius: 4px; box-shadow: 2px 4px 10px rgba(0,0,0,0.3); grid-template-columns: repeat(6, 1fr); gap: 6px; z-index: 80;
+      padding: 6px; border-radius: 4px; box-shadow: 2px 4px 10px rgba(0,0,0,0.3); grid-template-columns: repeat(5, 1fr); gap: 6px; z-index: 80;
     }
     .smiley-item {
-      padding: 4px; border: 1px solid transparent; cursor: pointer; display: flex; justify-content: center; align-items: center; border-radius: 3px; background: #fff;
+      padding: 4px; border: 1px solid #ccc; cursor: pointer; display: flex; justify-content: center; align-items: center; border-radius: 3px; background: #fff; font-size: 16px;
     }
     .smiley-item:hover { background: #ffe4b5; border-color: #316ac5; }
-    .smiley-item img { height: 18px; width: auto; }
 
     .yh-input-area {
       padding: 6px; background: #ece9d8; display: flex; gap: 6px; border-top: 1px solid #b5b5b5;
     }
-    .yh-input {
-      flex: 1; border: 1px solid #7f9db9; padding: 8px; outline: none; font-size: 13px; border-radius: 3px;
-    }
+    .yh-input { flex: 1; border: 1px solid #7f9db9; padding: 8px; outline: none; font-size: 13px; border-radius: 3px; }
     .yh-btn-send {
       width: 75px; background: linear-gradient(to bottom, #6d28d9, #410093); color: white; font-weight: bold; border: 1px solid #22085c; cursor: pointer; border-radius: 3px;
     }
 
-    .yh-sidebar {
-      background: #ece9d8; display: flex; flex-direction: column; padding: 6px; gap: 8px; height: 100%; overflow-y: auto;
-    }
-
+    .yh-sidebar { background: #ece9d8; display: flex; flex-direction: column; padding: 6px; gap: 8px; height: 100%; overflow-y: auto; }
     .yh-box { background: #fff; border: 1px solid #7f9db9; border-radius: 3px; padding: 6px; }
     .yh-box-title {
       background: #d9d4c0; padding: 4px 6px; font-weight: bold; color: #333; margin: -6px -6px 6px -6px; border-bottom: 1px solid #7f9db9; display: flex; justify-content: space-between; align-items: center;
@@ -147,9 +134,7 @@
     .yh-field label { font-size: 10px; color: #555; font-weight: bold; }
     .yh-field input { border: 1px solid #7f9db9; padding: 6px; outline: none; border-radius: 2px; }
 
-    .yh-statusbar {
-      background: #ece9d8; border-top: 1px solid #b5b5b5; padding: 4px 10px; font-size: 11px; color: #444; display: flex; justify-content: space-between;
-    }
+    .yh-statusbar { background: #ece9d8; border-top: 1px solid #b5b5b5; padding: 4px 10px; font-size: 11px; color: #444; display: flex; justify-content: space-between; }
 
     .yh-modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; }
     .yh-modal {
@@ -213,11 +198,10 @@
           <button class="yh-tool-btn" onclick="sendBuzz()" style="background:#fff3cd; font-weight:bold;"><b>BUZZ!</b> ⚡</button>
           
           <button class="yh-tool-btn" onclick="toggleSmileyPicker(event)">
-            <img src="https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f600.png" style="height:14px;"> Bảng Icon
+            😊 Bảng Icon
           </button>
           
           <div class="smiley-picker-popup" id="smileyPicker"></div>
-
           <span style="margin-left:auto; color:#666;" id="mqttStatusTag">🟡 Đang kết nối...</span>
         </div>
 
@@ -261,7 +245,7 @@
 
     <div class="yh-statusbar">
       <span id="statusRoomCode">Đang ở: Phòng Chung Công Cộng</span>
-      <span>AuraChat Engine - EMQX Secured</span>
+      <span>AuraChat Client Engine (Auto 10-Day Message Expiry)</span>
     </div>
   </div>
 
@@ -327,21 +311,23 @@
     let presenceTimer = null;
 
     const receivedMsgIds = new Set();
-    const chatLogs = {};
     const unreadCounts = {};
 
+    // THỜI GIAN HẠN ĐỊNH LƯU TIN NHẮN (10 NGÀY = 864,000,000 MS)
+    const TEN_DAYS_MS = 10 * 24 * 60 * 60 * 1000;
+
     const yahooSmileys = [
-      { code: ':-)', url: 'https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f642.png', name: 'Happy' },
-      { code: ':-D', url: 'https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f600.png', name: 'Big Smile' },
-      { code: ';-)', url: 'https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f609.png', name: 'Wink' },
-      { code: ':-P', url: 'https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f61b.png', name: 'Tongue' },
-      { code: ':-*', url: 'https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f618.png', name: 'Kiss' },
-      { code: ':-O', url: 'https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f62e.png', name: 'Surprise' },
-      { code: 'X(', url: 'https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f621.png', name: 'Angry' },
-      { code: ':-B', url: 'https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f60e.png', name: 'Cool' },
-      { code: ':=)', url: 'https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f608.png', name: 'Devil' },
-      { code: ':-((', url: 'https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f62d.png', name: 'Crying' },
-      { code: ':-(', url: 'https://raw.githubusercontent.com/twitter/twemoji/master/assets/72x72/1f641.png', name: 'Sad' }
+      { code: ':-)', emoji: '🙂', name: 'Happy' },
+      { code: ':-D', emoji: '😃', name: 'Big Smile' },
+      { code: ';-)', emoji: '😉', name: 'Wink' },
+      { code: ':-P', emoji: '😛', name: 'Tongue' },
+      { code: ':-*', emoji: '😘', name: 'Kiss' },
+      { code: ':-O', emoji: '😮', name: 'Surprise' },
+      { code: 'X(', emoji: '😡', name: 'Angry' },
+      { code: ':-B', emoji: '😎', name: 'Cool' },
+      { code: ':=)', emoji: '😈', name: 'Devil' },
+      { code: ':-((', emoji: '😭', name: 'Crying' },
+      { code: ':-(', emoji: '🙁', name: 'Sad' }
     ];
 
     let roomSessions = {
@@ -360,7 +346,6 @@
     function toggleMobileSidebar() { document.getElementById('appSidebar').classList.toggle('open'); }
     function openRoomModal() { document.getElementById('modalOverlay').style.display = 'block'; document.getElementById('roomModal').style.display = 'block'; }
 
-    // DỰNG BẢNG ICON
     function renderSmileyPicker() {
       const picker = document.getElementById('smileyPicker');
       picker.innerHTML = '';
@@ -368,7 +353,7 @@
         const item = document.createElement('div');
         item.className = 'smiley-item';
         item.title = `${s.name} (${s.code})`;
-        item.innerHTML = `<img src="${s.url}" alt="${s.code}">`;
+        item.innerText = s.emoji;
         item.onclick = (e) => {
           e.stopPropagation();
           insertSmiley(s.code);
@@ -397,27 +382,19 @@
       yahooSmileys.forEach(s => {
         const escapedCode = s.code.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
         const reg = new RegExp(escapedCode, 'g');
-        escapeText = escapeText.replace(reg, `<img src="${s.url}" class="yahoo-smiley" title="${s.code}">`);
+        escapeText = escapeText.replace(reg, `<span style="font-size:15px; margin:0 2px;">${s.emoji}</span>`);
       });
       return escapeText;
     }
 
-    // CƠ CHẾ BUZZ VÀ PHÁT RUNG MÀN HÌNH + ÂM THANH
     function triggerBuzzEffect() {
       const win = document.getElementById('yhWindowFrame');
-      
-      // 1. Rung Màn Hình Cửa Sổ Khung Chat
       win.classList.remove('buzz-shaking');
-      void win.offsetWidth; // Force Reflow
+      void win.offsetWidth;
       win.classList.add('buzz-shaking');
       setTimeout(() => win.classList.remove('buzz-shaking'), 500);
 
-      // 2. Rung Thiết Bị Di Động (Nếu là Mobile)
-      if ("vibrate" in navigator) {
-        navigator.vibrate([150, 80, 150]);
-      }
-
-      // 3. Phát Âm Thanh BUZZ!
+      if ("vibrate" in navigator) { navigator.vibrate([150, 80, 150]); }
       playBuzzSound();
     }
 
@@ -458,9 +435,7 @@
 
       const last = localStorage.getItem('aurachat_last_nick');
       let finalNick = newNick;
-      if (last && last !== newNick) {
-        finalNick = `${newNick} (lúc trước là: ${last})`;
-      }
+      if (last && last !== newNick) { finalNick = `${newNick} (lúc trước là: ${last})`; }
 
       if (currentUser.nickname && currentUser.nickname !== finalNick) {
         appendSysMsgToTab(activeTabId, `*** ${currentUser.nickname} đã đổi tên thành ${finalNick} ***`);
@@ -473,9 +448,10 @@
     }
 
     function confirmLogout() {
-      if (confirm("Bạn có chắc chắn muốn đăng xuất và thoát khỏi tất cả các phòng không?")) {
+      if (confirm("Bạn có chắc chắn muốn đăng xuất và xóa toàn bộ dữ liệu lịch sử không?")) {
         localStorage.removeItem('aurachat_active_room');
         localStorage.removeItem('aurachat_room_sessions');
+        localStorage.removeItem('aurachat_chat_logs_v1');
         location.reload();
       }
     }
@@ -485,7 +461,6 @@
       if (roomId === 'GENERAL') return alert("Không thể đóng Phòng Chung!");
       if (confirm(`Bạn có chắc muốn thoát phòng riêng ${roomId}?`)) {
         delete roomSessions[roomId];
-        delete chatLogs[roomId];
         delete unreadCounts[roomId];
 
         if (mqttClient && mqttClient.isConnected()) {
@@ -573,7 +548,7 @@
       };
 
       mqttClient.connect({
-        useSSL: true, timeout: 10, keepAliveInterval: 45, cleanSession: true,
+        useSSL: true, timeout: 10, keepAliveInterval: 45, cleanSession: false,
         onSuccess: () => {
           isConnecting = false;
           document.getElementById('mqttStatusTag').innerHTML = "🟢 Connected";
@@ -591,9 +566,9 @@
     function subscribeToAllActiveRooms() {
       if (!mqttClient || !mqttClient.isConnected()) return;
       for (const roomId of Object.keys(roomSessions)) {
-        mqttClient.subscribe(`aurachat/v1/${roomId}/chat`);
-        mqttClient.subscribe(`aurachat/v1/${roomId}/control`);
-        mqttClient.subscribe(`aurachat/v1/${roomId}/presence`);
+        mqttClient.subscribe(`aurachat/v1/${roomId}/chat`, { qos: 1 });
+        mqttClient.subscribe(`aurachat/v1/${roomId}/control`, { qos: 1 });
+        mqttClient.subscribe(`aurachat/v1/${roomId}/presence`, { qos: 0 });
       }
     }
 
@@ -603,6 +578,7 @@
       const topic = `aurachat/v1/${rId}/${topicSuffix}`;
       const message = new Paho.MQTT.Message(JSON.stringify(payloadObj));
       message.destinationName = topic;
+      message.qos = 1;
       mqttClient.send(message);
     }
 
@@ -648,12 +624,11 @@
           const plainText = await decryptE2EE(payload.cipher, payload.iv, currentRoom.roomPassword, currentRoom.roomId);
           if (plainText.startsWith("❌")) return;
 
-          saveMsgToMemoryLog(destTabId, payload.sender, plainText, payload.sender === currentUser.nickname, isDM, payload.timestamp);
+          const msgObj = { tabId: destTabId, sender: payload.sender, text: plainText, isMe: payload.sender === currentUser.nickname, isPrivate: isDM, timestamp: payload.timestamp };
 
-          // NẾU LÀ TIN NHẮN BUZZ! KÍCH HOẠT HIỆU ỨNG RUNG TRÊN MỌI MÁY NHẬN
-          if (plainText === 'BUZZ!') {
-            triggerBuzzEffect();
-          }
+          saveMsgToStorageLog(msgObj);
+
+          if (plainText === 'BUZZ!') { triggerBuzzEffect(); }
 
           if (destTabId === activeTabId) {
             renderActiveTabChatLog();
@@ -664,21 +639,62 @@
       } catch(e) {}
     }
 
-    function saveMsgToMemoryLog(tabId, sender, text, isMe, isPrivate, timestamp) {
-      if (!chatLogs[tabId]) chatLogs[tabId] = [];
-      chatLogs[tabId].push({ sender, text, isMe, isPrivate, timestamp });
+    // --- CƠ CHẾ LƯU VÀ TỰ ĐỘNG XÓA TIN CŨ HƠN 10 NGÀY CHO MỌI NGƯỜI ---
+    function saveMsgToStorageLog(msgObj) {
+      let logsMap = {};
+      try {
+        logsMap = JSON.parse(localStorage.getItem('aurachat_chat_logs_v1') || '{}');
+      } catch(e){}
+
+      if (!logsMap[msgObj.tabId]) logsMap[msgObj.tabId] = [];
+      logsMap[msgObj.tabId].push(msgObj);
+
+      // TỰ ĐỘNG TÌM VÀ XÓA TẤT CẢ TIN NHẮN ĐÃ HƠN 10 NGÀY TUỔI
+      const now = Date.now();
+      for (const tabId of Object.keys(logsMap)) {
+        logsMap[tabId] = logsMap[tabId].filter(m => (now - m.timestamp) <= TEN_DAYS_MS);
+      }
+
+      localStorage.setItem('aurachat_chat_logs_v1', JSON.stringify(logsMap));
+    }
+
+    function cleanupOldMessages() {
+      let logsMap = {};
+      try {
+        logsMap = JSON.parse(localStorage.getItem('aurachat_chat_logs_v1') || '{}');
+      } catch(e){ return; }
+
+      const now = Date.now();
+      let hasChange = false;
+
+      for (const tabId of Object.keys(logsMap)) {
+        const originalLength = logsMap[tabId].length;
+        logsMap[tabId] = logsMap[tabId].filter(m => (now - m.timestamp) <= TEN_DAYS_MS);
+        if (logsMap[tabId].length !== originalLength) {
+          hasChange = true;
+        }
+      }
+
+      if (hasChange) {
+        localStorage.setItem('aurachat_chat_logs_v1', JSON.stringify(logsMap));
+      }
     }
 
     function appendSysMsgToTab(tabId, text) {
-      if (!chatLogs[tabId]) chatLogs[tabId] = [];
-      chatLogs[tabId].push({ sys: true, text });
+      const msgObj = { tabId: tabId, sys: true, text: text, timestamp: Date.now() };
+      saveMsgToStorageLog(msgObj);
       if (tabId === activeTabId) renderActiveTabChatLog();
     }
 
     function renderActiveTabChatLog() {
+      cleanupOldMessages(); // Lọc sạch tin nhắn > 10 ngày trước khi in ra màn hình
       const box = document.getElementById('msgBox');
       box.innerHTML = '';
-      const logs = chatLogs[activeTabId] || [];
+      
+      let logsMap = {};
+      try { logsMap = JSON.parse(localStorage.getItem('aurachat_chat_logs_v1') || '{}'); } catch(e){}
+      
+      const logs = logsMap[activeTabId] || [];
 
       logs.forEach(m => {
         if (m.sys) {
@@ -883,10 +899,7 @@
     document.getElementById('btnSend').onclick = sendMsg;
     document.getElementById('chatInput').onkeypress = (e) => { if (e.key === 'Enter') sendMsg(); };
 
-    function sendBuzz() { 
-      document.getElementById('chatInput').value = 'BUZZ!'; 
-      sendMsg(); 
-    }
+    function sendBuzz() { document.getElementById('chatInput').value = 'BUZZ!'; sendMsg(); }
 
     const onlineMap = new Map();
     function sendPresencePing() {
@@ -939,7 +952,6 @@
 
     function closeDMTab(e, targetNick) {
       e.stopPropagation();
-      delete chatLogs[targetNick];
       delete unreadCounts[targetNick];
       const tab = document.querySelector(`.yh-tab[data-target="${targetNick}"]`);
       if (tab) tab.remove();
@@ -1042,6 +1054,7 @@
 
     window.onload = () => {
       renderSmileyPicker();
+      cleanupOldMessages(); // Tự động dọn dẹp các tin nhắn cũ hơn 10 ngày ngay khi mở web
 
       const savedNick = localStorage.getItem('aurachat_current_nick') || localStorage.getItem('aurachat_last_nick') || 'User_' + Math.random().toString(36).substr(2,4);
       currentUser.nickname = savedNick;
